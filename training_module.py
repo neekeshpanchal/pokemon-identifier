@@ -1,17 +1,30 @@
 import os
 import numpy as np
 import matplotlib.pyplot as plt
+import tensorflow as tf
 from tensorflow.keras.preprocessing.image import ImageDataGenerator, load_img, img_to_array
-from tensorflow.keras.models import Sequential
+from tensorflow.keras.models import load_model, Sequential
 from tensorflow.keras.layers import Conv2D, MaxPooling2D, Flatten, Dense, Dropout
 from tensorflow.keras.optimizers import Adam
-
+import tkinter as tk
+from tkinter import filedialog
+from PIL import Image, ImageTk
 
 # Dataset path
 data_path = "PokemonData"
 
 # Image dimensions
 img_width, img_height = 150, 150
+
+# Optimizations for faster model training
+# Set GPU memory growth (if available)
+gpus = tf.config.experimental.list_physical_devices("GPU")
+if gpus:
+    try:
+        for gpu in gpus:
+            tf.config.experimental.set_memory_growth(gpu, True)
+    except RuntimeError as e:
+        print(e)
 
 # Prepare data for training
 train_datagen = ImageDataGenerator(
@@ -35,75 +48,50 @@ validation_generator = train_datagen.flow_from_directory(
     class_mode="categorical"
 )
 
-# Build the Neural Network Model
-model = Sequential()
+# Load the trained model
+if os.path.exists("pokemon_type_model.h5"):
+    model = load_model("pokemon_type_model.h5")
+    print("Model loaded successfully.")
+else:
+    print("Please train the model first!")
 
-model.add(Conv2D(32, (3, 3), activation="relu", input_shape=(img_width, img_height, 3)))
-model.add(MaxPooling2D(pool_size=(2, 2)))
+# Tkinter GUI code
+def upload_image():
+    file_path = filedialog.askopenfilename(filetypes=[("Image Files", "*.jpg;*.png;*.jpeg")])
+    if file_path:
+        sample_img = Image.open(file_path)
+        sample_img = sample_img.resize((img_width, img_height))
+        sample_img_array = img_to_array(sample_img)
+        sample_img_array = np.expand_dims(sample_img_array, axis=0)
+        sample_img_array = sample_img_array / 255.0
 
-model.add(Conv2D(64, (3, 3), activation="relu"))
-model.add(MaxPooling2D(pool_size=(2, 2)))
+        prediction = model.predict(sample_img_array)
+        predicted_class = np.argmax(prediction[0])
+        class_labels = list(train_generator.class_indices.keys())
+        predicted_class_name = class_labels[predicted_class]
 
-model.add(Conv2D(128, (3, 3), activation="relu"))
-model.add(MaxPooling2D(pool_size=(2, 2)))
+        # Display the uploaded image
+        img = ImageTk.PhotoImage(sample_img)
+        image_label.config(image=img)
+        image_label.image = img
 
-model.add(Flatten())
-model.add(Dense(128, activation="relu"))
-model.add(Dropout(0.5))
-model.add(Dense(len(train_generator.class_indices), activation="softmax"))
+        result_label.config(text=f"Predicted Pokemon Type: {predicted_class_name}")
 
-model.compile(optimizer=Adam(learning_rate=0.001),
-              loss="categorical_crossentropy",
-              metrics=["accuracy"])
+# Create the Tkinter application window
+app = tk.Tk()
+app.title("Pokemon Type Prediction")
 
-# Train the Model
-epochs = 20
+# Button to upload the image
+upload_button = tk.Button(app, text="Upload Image", command=upload_image)
+upload_button.pack(pady=20)
 
-history = model.fit(
-    train_generator,
-    steps_per_epoch=train_generator.samples // train_generator.batch_size,
-    epochs=epochs,
-    validation_data=validation_generator,
-    validation_steps=validation_generator.samples // validation_generator.batch_size
-)
+# Label to display the uploaded image
+image_label = tk.Label(app)
+image_label.pack(pady=20)
 
-# Evaluate the Model
-# Plot accuracy and loss curves
-plt.plot(history.history["accuracy"])
-plt.plot(history.history["val_accuracy"])
-plt.title("Model Accuracy")
-plt.xlabel("Epoch")
-plt.ylabel("Accuracy")
-plt.legend(["Train", "Validation"], loc="upper left")
-plt.show()
+# Label to display the prediction
+result_label = tk.Label(app, text="", font=("Arial", 14))
+result_label.pack()
 
-plt.plot(history.history["loss"])
-plt.plot(history.history["val_loss"])
-plt.title("Model Loss")
-plt.xlabel("Epoch")
-plt.ylabel("Loss")
-plt.legend(["Train", "Validation"], loc="upper left")
-plt.show()
-
-# Evaluate on the validation set
-score = model.evaluate(validation_generator, verbose=0)
-print("Validation Loss:", score[0])
-print("Validation Accuracy:", score[1])
-
-# Making Predictions
-# Load a sample image for prediction
-sample_img_path = "image.png"
-sample_img = load_img(sample_img_path, target_size=(img_width, img_height))
-sample_img_array = img_to_array(sample_img)
-sample_img_array = np.expand_dims(sample_img_array, axis=0)
-
-# Normalize the pixel values
-sample_img_array = sample_img_array / 255.0
-
-# Make the prediction
-prediction = model.predict(sample_img_array)
-predicted_class = np.argmax(prediction[0])
-class_labels = list(train_generator.class_indices.keys())
-predicted_class_name = class_labels[predicted_class]
-
-print("Predicted Pokemon Type:", predicted_class_name)
+# Start the Tkinter main loop
+app.mainloop()
